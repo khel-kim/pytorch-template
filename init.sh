@@ -2,7 +2,7 @@
 mkdir data models config custom
 virtualenv env
 
-# rm -rf .git
+rm -rf .git
 
 source env/bin/activate
 pip3 install -r requirements.txt
