@@ -1,8 +1,5 @@
-#type "source init.sh"
-mkdir data models config custom
-virtualenv env
+mkdir data utils models modules saved_models
+touch .gitignore dataloader.py evaluation.py predict.py readme.md train.py trainer.py
+touch utils/requirements.txt utils/utils.py
 
-source env/bin/activate
-pip3 install -r requirements.txt
-python3 -m ipykernel install --user --name=env --display-name=$PWD
-jupyter nbextension enable --py widgetsnbextension
+pip install -r utils/requirements.txt

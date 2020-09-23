@@ -1,102 +1,101 @@
-import torch
-import torch.nn as nn
 from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
-
-from dataloader import data_loader
-from models.bidaf_imple.model import BiDAF
-from models.docqa_imple.model import DocQA
-
-from trainer import Trainer
-from evaluation import f1_score
-
-from utils.utils import read_json
+from models.bert import Bert
+from models.albert import Albert
+from models.distilbert import DistilBert
+from transformers import BertTokenizer, AlbertTokenizer, DistilBertTokenizer
+from modules.losses import CategoricalCrossEntropy
 
 
-def get_model(name):
-    """
-    if name.lower() == "bidaf":
-        return BiDAF(w_vocab_size=_w_vocab_size, w_emb_size=_w_emb_size)
-    elif name.lower() == "docqa":
-        return DocQA(w_vocab_size=_w_vocab_size, w_emb_size=_w_emb_size)
+def get_tokenizer(name, size):
+    if name == 'bert':
+        return BertTokenizer.from_pretrained(f"bert-{size}-uncased")
+    elif name == "albert":
+        return AlbertTokenizer.from_pretrained(f"albert-{size}-v2")
+    elif name == "distilbert":
+        return DistilBertTokenizer.from_pretrained(f"distilbert-{size}-uncased")
     else:
         raise AssertionError()
-    """
 
 
-def forward(data, model, loss_fn, device):
-    """
-    qc_ids = data['qc_ids'].to(device)
+def get_model_class(name):
+    if name == "bert":
+        return Bert
+    elif name == "albert":
+        return Albert
+    elif name == "distilbert":
+        return DistilBert
+    else:
+        raise AssertionError()
 
-    mask = torch.zeros_like(cw_ids) != cw_ids
 
-    logits = model(cw_ids, cc_ids, qw_ids, qc_ids)
-    loss = loss_fn(start_logits, start_targets)
-    return logits, loss
-    """
+def get_loss_fn_class(name):
+    if name == "cce":
+        return CategoricalCrossEntropy
+    else:
+        raise AssertionError()
 
 
-def get_metric(logits, data):
-    """
-    start_logits, end_logits = logits
-    start_logits, end_logits = start_logits.squeeze().cpu(), end_logits.squeeze().cpu()
-
-    answers = data['answer']
-
-    for i in range(n_samples):
-        true_answer = answers[i]
-
-        pred_answer = contexts[i][start_char_idx:end_char_idx+1]
-        f1 += f1_score(pred_answer, true_answer)
-    f1_result = 100.0 * f1 / n_samples
-    return f1_result
-    """
+def get_optim_class(name):
+    if name == "adam":
+        return Adam
+    else:
+        raise AssertionError()
 
 
 if __name__ == "__main__":
     import argparse
-
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-    _root = './data'
-    _neg_inf = -1e10
+    from datetime import datetime
+    from dataset import CustomDataset
+    from modules.callbacks import ModelCheckpoint
+    from modules.trainer import Trainer
+    from modules.evaluations import Accuracy, Precision
+    from utils.utils import read_json, set_random_seed, str2bool
+    from pprint import pprint
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str)
-
+    parser.add_argument("--tpu_ip_address", type=str, default=None)
     args = parser.parse_args()
 
-    config_path = args
+    config_path = args.config_path
+    tpu_ip_address = args.tpu_ip_address
+
     config = read_json(config_path)
-    _lr = config.lr
-    _epochs = config.epochs
-    _batch_size = config.batch
-    _print_iter = config.print_iter
-    _model_type = config.model_type
-    _save_model_dir = config.save_model_dir
-    _seed = config.seed
+    pprint(config)
+    _env, _model, _training = config["env"], config["model"], config["training"]
 
-    _run_name = f"M-{_model_type}-step_size-{_step_size}-gamma-{_gamma}-BSZ-{_batch_size}-LR-{_lr}"
+    _save_model_root = "saved_models"  # hard coding
+    _using_time = False  # hard coding
+    _root = "data/corona_nlp"  # hard coding
 
-    print(_run_name)
-    torch.manual_seed(_seed)
+    # start!!
+    set_random_seed(_env['seed'])
 
-    train_loader = data_loader(_root, "train",
-                               _context_max_len, _context_word_len,
-                               _query_max_len, _query_word_len, batch_size=_batch_size)
-    dev_loader = data_loader(_root, "validate",
-                             _context_max_len, _context_word_len,
-                             _query_max_len, _query_word_len, batch_size=_batch_size)
+    project_name = _root.split("/")[-1]
+    run_name = (f"{_model['name']}_{_model['size']}-"
+                f"lr_{_training['lr']}-bsz_{_training['batch_size']}-"
+                f"seed_{_env['seed']}")
+    now = datetime.now().strftime('%Y-%m-%d_%Hh%Mm%Ss')
 
-    model = get_model(_model_type)
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = Adam([param for param in model.parameters() if param.requires_grad],
-                     lr=_lr, weight_decay=1e-4)
-    scheduler = StepLR(optimizer, step_size=_step_size, gamma=_gamma)
+    tokenizer = get_tokenizer(_model['name'], _model['size'])
 
-    trainer = Trainer(train_loader, dev_loader,
-                      model, loss_fn, optimizer, scheduler,
-                      forward, get_metric,
-                      device)
+    train_dataset = CustomDataset(_root, 'train', tokenizer, _training["max_len"])
+    dev_dataset = CustomDataset(_root, 'dev', tokenizer, _training["max_len"])
 
-    trainer.train(_epochs, _batch_size, _print_iter, _save_model_dir, _run_name)
+    Model = get_model_class(_model['name'])
+    Opt = get_optim_class(_model['opt'])
+    Loss_fn = get_loss_fn_class(_model['loss'])
+    model = Model(n_outputs=train_dataset.n_outputs, size=_model['size'],
+                  pretrained_model_path=str2bool(_model['pretrained_model_path']))
+
+    metric_dic = {
+        "acc": Accuracy(),
+        "precision": Precision()
+    }
+    callbacks = [
+        ModelCheckpoint(f"{_save_model_root}/{run_name}.pth", monitor='dev_loss', mode="min")
+    ]
+
+    trainer = Trainer(model=model, loss_fn_class=Loss_fn, optimizer_class=Opt, metrics=metric_dic)
+    trainer.fit(train_dataset, dev_dataset, lr=_training['lr'], epochs=_training['epochs'],
+                batch_size=_training['batch_size'], callbacks=callbacks)

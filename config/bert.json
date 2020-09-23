@@ -1,0 +1,19 @@
+{
+  "env": {
+    "seed": 0,
+    "using_wandb": "F"
+  },
+  "model": {
+    "name": "bert",
+    "size": "base",
+    "loss": "cce",
+    "opt": "adam",
+    "pretrained_model_path": "F"
+  },
+  "training": {
+    "lr": 1e-6,
+    "epochs": 5,
+    "batch_size": 8,
+    "max_len": 128
+  }
+}

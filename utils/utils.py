@@ -5,12 +5,18 @@ import random
 import torch
 
 
+def read_txt(path):
+    with open(path) as f:
+        result = f.readlines()
+    return result
+
+
 def read_tsv(path, header="infer"):
     return pd.read_csv(path, sep='\t', header=header)
 
 
-def read_csv(path, header="infer"):
-    return pd.read_csv(path, header=header)
+def read_csv(path, header="infer", encoding='utf-8'):
+    return pd.read_csv(path, header=header, encoding=encoding)
 
 
 def read_json(path):
@@ -19,9 +25,22 @@ def read_json(path):
     return result
 
 
+def read_npy(path):
+    return np.load(path)
+
+
+def read_jsonl(path):
+    return pd.read_json(path, lines=True)
+
+
 def save_json(path, obj):
     with open(path, 'w') as j:
         json.dump(obj, j, ensure_ascii=False)
+
+
+def save_npy(path, obj):
+    path = path.replace(".npy", "")
+    np.save(path, obj)
 
 
 def set_random_seed(seed):
@@ -31,31 +50,10 @@ def set_random_seed(seed):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-    print(f"set seed as {seed}")
 
-
-class AverageMeter(object):
-    val, avg, sum, count = [None] * 4
-
-    def __init__(self, name, fmt=':f'):
-        self.name = name
-        self.fmt = fmt
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-    def __str__(self):
-        return "{} {:.3f} ({:.3f})".format(self.name, self.val, self.avg)
+def str2bool(string):
+    string = string.lower()
+    return True if string in ["y", "t", "true", "yes"] else False
 
 
 if __name__ == "__main__":
